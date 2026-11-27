@@ -1,3 +1,4 @@
+#include "install_token.hpp"
 #include "installer.h"
 #include "install-data.hpp"
 
@@ -200,36 +201,42 @@ struct TableIds {
     unsigned ring{}, skill{}, state{};
 };
 
-std::string MergeTable(const InstallData::TableSeed& seed, std::string_view original, TableIds& ids) {
+std::string MergeTable(const InstallData::TableSeed& seed, std::string_view original, TableIds& ids) try {
+    const Tsv source(seed.tsv);
     const Tsv target(original);
-    const auto lines = Split(seed.tsv, '\n');
-    const auto names = Split(lines.front(), '\t');
-    std::vector<std::size_t> columns;
-    for (const auto name : names) columns.push_back(target.Column(name));
-    const auto firstKey = Split(lines[1], '\t').front();
+    const auto sourceKey = source.Column(seed.keyColumn);
+    const auto targetKey = target.Column(seed.keyColumn);
+    if (source.rows.empty()) throw std::runtime_error("no source rows");
+    const auto firstKey = Tsv::Field(source.rows.front(), sourceKey);
     const std::wstring_view filename(seed.filename);
-    if (filename == L"setitems.txt") ids.ring = StartingId(target, columns.front(), seed.idColumn, firstKey);
+    if (filename == L"setitems.txt") ids.ring = StartingId(target, targetKey, seed.idColumn, firstKey);
     // Extracted Skills tables may leave the *Id comment blank for RotW rows.
-    if (filename == L"skills.txt") ids.skill = StartingId(target, columns.front(), seed.idColumn, firstKey, true);
-    if (filename == L"states.txt") ids.state = StartingId(target, columns.front(), seed.idColumn, firstKey);
+    if (filename == L"skills.txt") ids.skill = StartingId(target, targetKey, seed.idColumn, firstKey, true);
+    if (filename == L"states.txt") ids.state = StartingId(target, targetKey, seed.idColumn, firstKey);
 
     const auto newline = original.find("\r\n") == std::string_view::npos ? "\n"sv : "\r\n"sv;
     const auto creator = target.columns.find("*Creator");
     std::string result(original);
-    for (std::size_t i = 1; i < lines.size(); ++i) {
-        const auto fields = Split(lines[i], '\t');
-        const auto found = target.Find(columns.front(), fields.front());
+    std::set<std::string_view> keys;
+    for (const auto& fields : source.rows) {
+        const auto key = Tsv::Field(fields, sourceKey);
+        if (key.empty()) throw std::runtime_error("missing source row key");
+        if (!keys.insert(key).second) throw std::runtime_error("duplicate source row " + std::string(key));
+        if (fields.size() > source.columns.size())
+            throw std::runtime_error("source row has more fields than its header");
+        const auto found = target.Find(targetKey, key);
         std::vector<std::string> row(target.columns.size());
-        for (std::size_t j = 0; j < fields.size(); ++j) {
-            const auto field = fields[j];
-            auto& cell = row[columns[j]];
+        for (const auto& [name, index] : source.columns) {
+            const auto field = Tsv::Field(fields, index);
+            if (field.empty() || name == "*Creator") continue;
+            const auto column = target.Column(name);
+            auto& cell = row[column];
             if (field.starts_with("@ring")) cell = std::to_string(ids.ring + Number(field.substr(5)));
             else if (field == "@skill") cell = std::to_string(ids.skill);
             else if (field == "@state") cell = std::to_string(ids.state);
             else cell = field;
-            if (found != target.rows.size() && !field.empty()
-                    && Tsv::Field(target.rows[found], columns[j]) != cell)
-                throw std::runtime_error("conflicting existing row " + std::string(fields.front()));
+            if (found != target.rows.size() && Tsv::Field(target.rows[found], column) != cell)
+                throw std::runtime_error("conflicting existing row " + std::string(key));
         }
         if (found != target.rows.size()) continue;
         if (creator != target.columns.end()) row[creator->second] = "MadMike";
@@ -241,6 +248,8 @@ std::string MergeTable(const InstallData::TableSeed& seed, std::string_view orig
         result += newline;
     }
     return result;
+} catch (const std::exception& error) {
+    throw std::runtime_error(std::string(error.what()) + " in " + fs::path(seed.filename).string());
 }
 
 std::string MakeManifest(const std::string& original, const TableIds& ids) {
@@ -494,6 +503,7 @@ InstallResult Install(const D2RL::PluginContext& ctx) {
     const auto root = ModDataRoot(ctx);
     if (root.empty() || fs::is_regular_file(root)) return InstallResult::NoLooseData;
     InstallLock lock;
+    if (InstallToken::Complete(ctx)) return InstallResult::AlreadyInstalled;
     const auto skillFile = fs::path(Strings) / L"skills.json";
     const auto itemFile = fs::path(Strings) / L"item-names.json";
     const auto propertiesFile = fs::path(Excel) / PropertiesFile;
@@ -503,7 +513,10 @@ InstallResult Install(const D2RL::PluginContext& ctx) {
     std::vector<Edit> edits;
     if (installed) {
         QueueRecipeCleanup(root, edits);
-        if (edits.empty()) return InstallResult::AlreadyInstalled;
+        if (edits.empty()) {
+            InstallToken::Commit(ctx);
+            return InstallResult::AlreadyInstalled;
+        }
     }
 
     if (!ctx.pluginConfigPath || !ctx.pluginConfigPath[0])
@@ -589,6 +602,7 @@ InstallResult Install(const D2RL::PluginContext& ctx) {
         loader / SharedSetup / L"backups/runeword-free-rings" / timestamp);
     if (!IsWithin(loader, backupRoot)) throw std::runtime_error("the backup directory is outside the mod's loader folder");
     ApplyEdits(root, backupRoot, edits);
+    InstallToken::Commit(ctx);
     return installed ? InstallResult::RecipesRemoved : InstallResult::Installed;
 }
 }

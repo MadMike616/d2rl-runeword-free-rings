@@ -19,7 +19,7 @@ constexpr D2RL::PluginInfo Info{
     .abiVersion = D2RL_PLUGIN_ABI_VERSION,
     .id = "runeword-free-rings",
     .name = "Runeword-Free Rings",
-    .version = "1.0.0",
+    .version = "1.0.2",
     .author = "MadMike",
     .description = "Grants the Unruned Oath bonus only without equipped runewords.",
     .flags = D2RL::PluginFlags::ModScopedOnly | D2RL::PluginFlags::Server | D2RL::PluginFlags::NativeHooks,

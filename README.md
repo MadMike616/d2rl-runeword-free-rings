@@ -66,6 +66,8 @@ again.
 
 Setup holds the shared D2RLoader mod-install lock through backups and
 file writes. Installers that use the same lock run one at a time.
+Table columns can be reordered. Setup reports invalid headers and
+missing columns required by the new rows before it writes any files.
 
 To uninstall, first remove Oath rings from characters and stashes that will continue to use
 the mod. With the game closed, remove the DLL and restore the affected
@@ -89,7 +91,7 @@ The source archive includes the C++ plugin and installer, the Windows
 resource script, the embedded data generator and translations, the
 D2RLoader Plugin SDK 0.4.0 headers, and the licenses and native hook
 inventory. The reference directory contains the generated installer header
-and linker map for the release DLL.
+for the release DLL.
 
 - `src/plugin.cpp` resolves the loaded tables, checks equipped items,
   applies the pair bonus, and formats item tooltips.
@@ -113,5 +115,14 @@ The script generates the installer header and builds the Release DLL and
 linker map in the output directory. Keep the bundled `PluginSDK` folder
 in the repository root or beside the plugin source directory in the release ZIP.
 
-The v1.0.0 reference build used MSVC 19.51.36260, linker 14.51.36260.0,
+The release build uses MSVC 19.51.36260, linker 14.51.36260.0,
 Windows SDK 10.0.26100.0, and Python 3.13.14.
+
+
+## Installation completion
+
+After successful first-run setup, the plugin records a completion token in its TOML configuration. Later launches skip that completed setup and preserve existing files and settings. Failed setup remains retryable.
+
+An existing complete installation is recognized without duplicating ring rows. Legacy Cube-recipe cleanup is performed only during setup.
+
+To rerun setup intentionally, close the game and set `complete = false` in the relevant token section (`[installation]` by default).

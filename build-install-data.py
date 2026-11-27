@@ -7,7 +7,7 @@ import sys
 
 from stage_tables import (
     DATA_FORMAT, KEY, LOCALES, PAIRS, PAIR_STATS, RING_LEVEL, RING_NAMES, RING_ROLLS,
-    SET, SET_NAMES, add_oath_rows,
+    SET, SET_NAMES, TABLE_KEYS, add_oath_rows,
 )
 
 
@@ -42,8 +42,7 @@ def strings(name, entries):
 def main(output):
     labels_path = Path(__file__).parent / "src/assets/bonus-labels.json"
     labels = json.loads(labels_path.read_text(encoding="utf-8"))
-    tables = {name: TableSeed() for name in
-              ("sets", "setitems", "skills", "states", "skilldesc")}
+    tables = {name: TableSeed() for name in TABLE_KEYS}
     ids = {"setitems": "*ID", "skills": "*Id", "states": "*ID"}
     add_oath_rows(tables, {ring: f"@ring{i}" for i, ring in enumerate(RING_NAMES)}, "@skill", "@state")
 
@@ -70,14 +69,14 @@ def main(output):
         "#include <array>",
         "#include <string_view>",
         "namespace InstallData {",
-        "struct TableSeed { const wchar_t* filename; std::string_view idColumn, tsv; };",
+        "struct TableSeed { const wchar_t* filename; std::string_view keyColumn, idColumn, tsv; };",
         "struct StringSeed { std::string_view key, json; };",
         f"inline constexpr unsigned Format = {DATA_FORMAT}, RingLevel = {RING_LEVEL};",
         f"inline constexpr std::array Locales{{{', '.join(map(quoted, LOCALES))}}};",
         f"inline constexpr std::array StatNames{{{', '.join(map(quoted, stat_names))}}};",
         f"inline constexpr std::array RequiredProperties{{{', '.join(map(quoted, properties))}}};",
         "inline constexpr std::array Tables{",
-        *(f'    TableSeed{{L"{name}.txt", {quoted(ids.get(name, ""))}, {quoted(seed.tsv())}}},'
+        *(f'    TableSeed{{L"{name}.txt", {quoted(TABLE_KEYS[name])}, {quoted(ids.get(name, ""))}, {quoted(seed.tsv())}}},'
           for name, seed in tables.items()),
         "};",
         f"inline constexpr unsigned PairValues[{len(pairs)}][{len(stat_names)}]{{",

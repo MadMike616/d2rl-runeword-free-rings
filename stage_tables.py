@@ -11,6 +11,13 @@ SET = "The Unruned Oath"
 AURA = "Unruned Oath"
 KEY = "UnrunedOath"
 STATE = "unruned_oath"
+TABLE_KEYS = {
+    "sets": "index",
+    "setitems": "index",
+    "skills": "skill",
+    "states": "state",
+    "skilldesc": "skilldesc",
+}
 DATA_FORMAT = 1
 MAX_STATS = 32
 RING_LEVEL = 75
@@ -113,31 +120,44 @@ RING_NAMES = {
 
 
 class Table:
-    def __init__(self, path):
+    def __init__(self, path, key_column):
         self.path = path
         self.raw = path.read_bytes()
         self.newline = "\r\n" if b"\r\n" in self.raw else "\n"
         parsed = list(csv.reader(io.StringIO(self.raw.decode("utf-8-sig")),
                                  delimiter="\t", quoting=csv.QUOTE_NONE))
+        if not parsed or not parsed[0] or "" in parsed[0] or len(set(parsed[0])) != len(parsed[0]):
+            raise ValueError(f"{path.name} has an empty or duplicate column name")
         self.header, *self.rows = parsed
+        if key_column not in self.header:
+            raise ValueError(f"{path.name} is missing the {key_column} column")
+        self.key_index = self.header.index(key_column)
         self.added = []
+
+    def key(self, row):
+        return row[self.key_index] if self.key_index < len(row) else ""
 
     def next_id(self, column):
         i = self.header.index(column)
         return max(int(r[i]) for r in self.rows if len(r) > i and r[i].isdecimal()) + 1
 
     def count(self):
-        return sum(bool(row and row[0] and row[0] != "Expansion")
+        return sum(self.key(row) not in ("", "Expansion")
                    for row in self.rows) + len(self.added)
 
     def add(self, **fields):
         if "*Creator" in self.header:
             fields.setdefault("*Creator", "MadMike")
-        if set(fields) - set(self.header):
-            raise ValueError(f"{self.path.name}: unknown columns {set(fields) - set(self.header)}")
+        missing = sorted(name for name, value in fields.items()
+                         if name != "*Creator" and str(value) and name not in self.header)
+        if missing:
+            raise ValueError(f"{self.path.name} is missing populated columns {', '.join(missing)}")
         row = [str(fields.get(col, "")) for col in self.header]
-        if any(r and r[0] == row[0] for r in self.rows + self.added):
-            raise ValueError(f"{self.path.name}: {row[0]} already exists")
+        key = self.key(row)
+        if not key:
+            raise ValueError(f"{self.path.name} needs a {self.header[self.key_index]} for the new row")
+        if any(self.key(r) == key for r in self.rows + self.added):
+            raise ValueError(f"{key} already exists in {self.path.name}")
         self.added.append(row)
 
     def write(self, path):
@@ -251,8 +271,8 @@ def main():
         parser.error("source and stage must be separate directories")
     excel = Path("data/global/excel")
     strings = Path("data/local/lng/strings")
-    tables = {name: Table(args.source / excel / (name + ".txt"))
-              for name in ("sets", "setitems", "skills", "states", "skilldesc")}
+    tables = {name: Table(args.source / excel / (name + ".txt"), key)
+              for name, key in TABLE_KEYS.items()}
     ring_id = tables["setitems"].next_id("*ID")
     state_id = tables["states"].next_id("*ID")
     skill_id = tables["skills"].next_id("*Id")
@@ -262,8 +282,8 @@ def main():
         if tables[table].count() != next_id:
             raise ValueError(f"{table}: IDs and physical rows differ")
     ring_ids = {name: ring_id + i for i, name in enumerate(RING_NAMES)}
-    property_table = Table(args.source / excel / "properties.txt")
-    valid_properties = {row[0] for row in property_table.rows if row}
+    property_table = Table(args.source / excel / "properties.txt", "code")
+    valid_properties = {property_table.key(row) for row in property_table.rows}
     add_oath_rows(tables, ring_ids, skill_id, state_id, valid_properties)
     for name, table in tables.items():
         table.write(args.stage / excel / (name + ".txt"))

@@ -6,9 +6,9 @@
 |---|---|
 | Plugin name | Runeword-Free Rings |
 | Plugin ID | runeword-free-rings |
-| Release version | 1.0.0 |
-| Inventory updated | 2026-11-17 |
-| Source revision | v1.0.0 |
+| Release version | 1.0.2 |
+| Inventory updated | 2026-11-27 |
+| Source revision | v1.0.2 release source |
 | D2R build(s) audited | 3.4.95032 with D2RLoader 1.3.1-beta |
 | D2RLoader SDK / Plugin ABI | 0.4.0 / 4 |
 | Audit status | Complete |
@@ -66,3 +66,7 @@ Version 1.1.0 uses shared basefiles for missing installer inputs.
 Hook sites and guards are unchanged.
 The first public release, v1.0.0, preserves both hook sites and their guards
 from the development build.
+Version 1.0.1 validates and matches TXT table headers by name.
+Hook sites and guards are unchanged.
+
+Release 1.0.2 source review: TOML installation completion and configuration mirroring add no native hook, patch, vtable, or OS input-hook targets. Hook-site changes since the previous release: none. Startup completion was checked in the testing environment; the existing native validation limits above still apply.
